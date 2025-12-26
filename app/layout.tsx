@@ -23,9 +23,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {children}
+        {/* HEADER CORPORATIVO */}
+        <header className="mvd-header">
+          <img
+            src="/logo_mvd.png"
+            alt="Veta Dorada"
+            className="mvd-logo"
+          />
+          <div className="mvd-header-text">
+            <h1>MVD – TI Tickets</h1>
+            <span>Copiloto TI · Insights & Power BI</span>
+          </div>
+        </header>
+
+        {/* CONTENIDO */}
+        <main className="mvd-content">
+          {children}
+        </main>
       </body>
     </html>
   );
