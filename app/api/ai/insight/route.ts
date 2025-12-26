@@ -162,8 +162,8 @@ ${JSON.stringify(historyTickets)}
       body: JSON.stringify({
         model: "gpt-5.1-mini",
         input: [
-          { role: "system", content: [{ type: "text", text: system }] },
-          { role: "user", content: [{ type: "text", text: user }] },
+          { role: "system", content: [{ type: "input_text", text: system }] },
+          { role: "user", content: [{ type: "input_text", text: user }] },
         ],
         text: {
           format: {
