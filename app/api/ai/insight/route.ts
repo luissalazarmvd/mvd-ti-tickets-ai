@@ -5,6 +5,9 @@ export const runtime = "nodejs";
 
 type Body = { id_ticket: string };
 
+// =========================
+// Helpers
+// =========================
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +16,9 @@ function getSupabase() {
     throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
   }
 
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  });
 }
 
 function getOpenAIKey() {
@@ -50,6 +55,9 @@ function compactTicket(t: any) {
   };
 }
 
+// =========================
+// POST
+// =========================
 export async function POST(req: Request) {
   try {
     const supabase = getSupabase();
@@ -65,7 +73,9 @@ export async function POST(req: Request) {
       );
     }
 
+    // =========================
     // 1) Ticket actual
+    // =========================
     const { data: cur, error: e1 } = await supabase
       .from("tickets")
       .select("*")
@@ -80,11 +90,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Históricos relevantes (mismo criterio)
+    // =========================
+    // 2) Históricos relevantes
+    // =========================
     const { data: hist, error: e2 } = await supabase
       .from("tickets")
       .select(
-        "id_ticket, category_name, ticket_title, ticket_detail, ticket_res_note, ticket_cause, sla_res_minu, res_val, res_val_note, res_val_class, res_date"
+        "id_ticket, ticket_title, ticket_detail, ticket_res_note, ticket_cause, sla_res_minu, res_val, res_val_note, res_val_class, res_date"
       )
       .eq("category_name", cur.category_name)
       .not("res_date", "is", null)
@@ -108,25 +120,27 @@ export async function POST(req: Request) {
       res_date: x.res_date,
     }));
 
-    // 3) Prompt (JSON)
+    // =========================
+    // 3) Prompt
+    // =========================
     const system = `
-Eres un analista senior de soporte TI (ITSM). Tu trabajo: proponer una solución accionable y segura
-basándote en el ticket actual y tickets históricos resueltos.
+Eres un analista senior de soporte TI (ITSM).
+Propones una solución accionable basándote en el ticket actual y tickets históricos resueltos.
 
 Reglas:
-- No inventes acciones que requieran permisos no mencionados.
-- Si falta información, indica EXACTAMENTE qué falta y cómo pedirla.
-- Prioriza: (1) restaurar servicio rápido, (2) evitar recurrencia, (3) buena experiencia del usuario.
-- Usa los históricos como evidencia: cita IDs de tickets usados.
+- No inventes accesos ni permisos.
+- Si falta información, indícalo explícitamente.
+- Prioriza: restaurar servicio, evitar recurrencia, experiencia del usuario.
+- Cita IDs de tickets históricos usados.
 - Devuelve SOLO JSON válido según el schema.
 `.trim();
 
     const user = `
 TICKET ACTUAL:
-${JSON.stringify(currentTicket)}
+${JSON.stringify(currentTicket, null, 2)}
 
-HISTÓRICOS RELEVANTES (misma categoría):
-${JSON.stringify(historyTickets)}
+HISTÓRICOS RELEVANTES:
+${JSON.stringify(historyTickets, null, 2)}
 `.trim();
 
     const schema = {
@@ -138,7 +152,10 @@ ${JSON.stringify(historyTickets)}
         pasos_sugeridos: { type: "array", items: { type: "string" } },
         preguntas_para_aclarar: { type: "array", items: { type: "string" } },
         riesgos_y_precauciones: { type: "array", items: { type: "string" } },
-        tickets_historicos_usados: { type: "array", items: { type: "string" } },
+        tickets_historicos_usados: {
+          type: "array",
+          items: { type: "string" },
+        },
         confianza: { type: "number", minimum: 0, maximum: 1 },
       },
       required: [
@@ -152,7 +169,9 @@ ${JSON.stringify(historyTickets)}
       ],
     };
 
-    // 4) OpenAI Responses API (JSON schema correcto: text.format)
+    // =========================
+    // 4) OpenAI Responses API
+    // =========================
     const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -185,20 +204,22 @@ ${JSON.stringify(historyTickets)}
 
     const out = await resp.json();
 
-    // En Responses API, lo más directo es output_text cuando pides texto/JSON en text.format
-    const text = out?.output_text ?? null;
+    // =========================
+    // 5) Leer JSON estructurado (CORRECTO)
+    // =========================
+    const json =
+      out?.output?.[0]?.content?.find(
+        (c: any) => c.type === "output_json"
+      )?.json ?? null;
 
-    if (!text) {
+    if (!json) {
       return NextResponse.json(
-        { ok: false, error: "No se obtuvo output_text del modelo" },
+        { ok: false, error: "No se obtuvo JSON del modelo" },
         { status: 500 }
       );
     }
 
-    // output_text debe ser un JSON string válido por el schema
-    const parsed = JSON.parse(text);
-
-    return NextResponse.json({ ok: true, data: parsed });
+    return NextResponse.json({ ok: true, data: json });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Error" },
