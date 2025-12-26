@@ -205,21 +205,47 @@ ${JSON.stringify(historyTickets, null, 2)}
     const out = await resp.json();
 
     // =========================
-    // 5) Leer JSON estructurado (CORRECTO)
+    // 5) Extracción ROBUSTA del JSON
     // =========================
-    const json =
-      out?.output?.[0]?.content?.find(
-        (c: any) => c.type === "output_json"
-      )?.json ?? null;
+    let parsedJson: any = null;
 
-    if (!json) {
+    // 5.1) Buscar output_json explícito
+    for (const block of out?.output ?? []) {
+      for (const c of block.content ?? []) {
+        if (c.type === "output_json" && c.json) {
+          parsedJson = c.json;
+          break;
+        }
+      }
+      if (parsedJson) break;
+    }
+
+    // 5.2) Fallback: parsear output_text
+    if (!parsedJson) {
+      for (const block of out?.output ?? []) {
+        for (const c of block.content ?? []) {
+          if (c.type === "output_text" && typeof c.text === "string") {
+            try {
+              parsedJson = JSON.parse(c.text);
+              break;
+            } catch {
+              // sigue buscando
+            }
+          }
+        }
+        if (parsedJson) break;
+      }
+    }
+
+    if (!parsedJson) {
+      console.error("OpenAI raw response:", JSON.stringify(out, null, 2));
       return NextResponse.json(
-        { ok: false, error: "No se obtuvo JSON del modelo" },
+        { ok: false, error: "No se pudo extraer JSON del modelo" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true, data: json });
+    return NextResponse.json({ ok: true, data: parsedJson });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Error" },
