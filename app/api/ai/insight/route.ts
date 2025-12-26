@@ -3,15 +3,24 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
-
 type Body = { id_ticket: string };
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  }
+
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function getOpenAIKey() {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) throw new Error("Missing OPENAI_API_KEY.");
+  return k;
+}
 
 function compactTicket(t: any) {
   return {
@@ -43,10 +52,17 @@ function compactTicket(t: any) {
 
 export async function POST(req: Request) {
   try {
+    const supabase = getSupabase();
+    const OPENAI_API_KEY = getOpenAIKey();
+
     const body = (await req.json()) as Body;
     const id_ticket = (body?.id_ticket ?? "").trim();
+
     if (!id_ticket) {
-      return NextResponse.json({ ok: false, error: "Falta id_ticket" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Falta id_ticket" },
+        { status: 400 }
+      );
     }
 
     // 1) Ticket actual
@@ -58,17 +74,18 @@ export async function POST(req: Request) {
 
     if (e1) throw e1;
     if (!cur) {
-      return NextResponse.json({ ok: false, error: "Ticket no encontrado" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "Ticket no encontrado" },
+        { status: 404 }
+      );
     }
 
-    // 2) Históricos relevantes (simple MVP):
-    // - misma categoría
-    // - resuelto (res_date not null)
-    // - con nota de resolución o causa
-    // - prioriza mejor calificación y menor SLA de resolución
+    // 2) Históricos relevantes (mismo criterio)
     const { data: hist, error: e2 } = await supabase
       .from("tickets")
-      .select("id_ticket, category_name, ticket_title, ticket_detail, ticket_res_note, ticket_cause, sla_res_minu, res_val, res_val_note, res_val_class, res_date")
+      .select(
+        "id_ticket, category_name, ticket_title, ticket_detail, ticket_res_note, ticket_cause, sla_res_minu, res_val, res_val_note, res_val_class, res_date"
+      )
       .eq("category_name", cur.category_name)
       .not("res_date", "is", null)
       .order("res_val", { ascending: false, nullsFirst: false })
@@ -91,7 +108,7 @@ export async function POST(req: Request) {
       res_date: x.res_date,
     }));
 
-    // 3) Prompt + salida estructurada (JSON)
+    // 3) Prompt (JSON)
     const system = `
 Eres un analista senior de soporte TI (ITSM). Tu trabajo: proponer una solución accionable y segura
 basándote en el ticket actual y tickets históricos resueltos.
@@ -100,72 +117,59 @@ Reglas:
 - No inventes acciones que requieran permisos no mencionados.
 - Si falta información, indica EXACTAMENTE qué falta y cómo pedirla.
 - Prioriza: (1) restaurar servicio rápido, (2) evitar recurrencia, (3) buena experiencia del usuario.
-- Usa los históricos solo como evidencia: cita IDs de tickets usados.
-Devuelve SOLO JSON válido según el schema.
+- Usa los históricos como evidencia: cita IDs de tickets usados.
+- Devuelve SOLO JSON válido según el schema.
 `.trim();
 
     const user = `
 TICKET ACTUAL:
-${JSON.stringify(currentTicket, null, 2)}
+${JSON.stringify(currentTicket)}
 
 HISTÓRICOS RELEVANTES (misma categoría):
-${JSON.stringify(historyTickets, null, 2)}
+${JSON.stringify(historyTickets)}
 `.trim();
 
-    // OpenAI Responses API
-    // Modelo recomendado por costo/calidad: gpt-5-mini
+    const schema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        resumen: { type: "string" },
+        diagnostico_probable: { type: "string" },
+        pasos_sugeridos: { type: "array", items: { type: "string" } },
+        preguntas_para_aclarar: { type: "array", items: { type: "string" } },
+        riesgos_y_precauciones: { type: "array", items: { type: "string" } },
+        tickets_historicos_usados: { type: "array", items: { type: "string" } },
+        confianza: { type: "number", minimum: 0, maximum: 1 },
+      },
+      required: [
+        "resumen",
+        "diagnostico_probable",
+        "pasos_sugeridos",
+        "preguntas_para_aclarar",
+        "riesgos_y_precauciones",
+        "tickets_historicos_usados",
+        "confianza",
+      ],
+    };
+
+    // 4) OpenAI Responses API (JSON schema correcto: text.format)
     const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-mini",
+        model: "gpt-5.1-mini",
         input: [
           { role: "system", content: [{ type: "text", text: system }] },
           { role: "user", content: [{ type: "text", text: user }] },
         ],
-        // Para respuestas consistentes
-        response_format: {
-          type: "json_schema",
-          json_schema: {
+        text: {
+          format: {
+            type: "json_schema",
             name: "ticket_insight",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                resumen: { type: "string" },
-                diagnostico_probable: { type: "string" },
-                pasos_sugeridos: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                preguntas_para_aclarar: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                riesgos_y_precauciones: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                tickets_historicos_usados: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                confianza: { type: "number", minimum: 0, maximum: 1 },
-              },
-              required: [
-                "resumen",
-                "diagnostico_probable",
-                "pasos_sugeridos",
-                "preguntas_para_aclarar",
-                "riesgos_y_precauciones",
-                "tickets_historicos_usados",
-                "confianza",
-              ],
-            },
+            schema,
           },
         },
       }),
@@ -173,23 +177,25 @@ ${JSON.stringify(historyTickets, null, 2)}
 
     if (!resp.ok) {
       const t = await resp.text();
-      return NextResponse.json({ ok: false, error: `OpenAI error: ${t}` }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: `OpenAI error: ${t}` },
+        { status: 500 }
+      );
     }
 
     const out = await resp.json();
 
-    // Responses API devuelve contenido; acá lo leemos como JSON string del output
-    // Dependiendo del SDK, puede variar; con fetch suele venir:
-    // out.output[...].content[...].text
-    const text =
-      out?.output?.[0]?.content?.find((c: any) => c.type === "output_text")?.text ??
-      out?.output_text ??
-      null;
+    // En Responses API, lo más directo es output_text cuando pides texto/JSON en text.format
+    const text = out?.output_text ?? null;
 
     if (!text) {
-      return NextResponse.json({ ok: false, error: "No se obtuvo respuesta del modelo" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "No se obtuvo output_text del modelo" },
+        { status: 500 }
+      );
     }
 
+    // output_text debe ser un JSON string válido por el schema
     const parsed = JSON.parse(text);
 
     return NextResponse.json({ ok: true, data: parsed });
