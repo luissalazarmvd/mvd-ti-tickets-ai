@@ -3,6 +3,7 @@
   --foreground: #ffffff;      /* Texto blanco */
   --card-bg: #0b5c9e;         /* Azul más oscuro para cards */
   --border-soft: rgba(255, 255, 255, 0.15);
+  --hint-text: #cfe6f7;       /* Texto explicativo / placeholders */
 }
 
 /* 🔒 No dependemos del dark/light del SO */
@@ -34,6 +35,26 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* =========================
+   PLACEHOLDER INPUTS
+   ========================= */
+input::placeholder {
+  color: var(--hint-text);
+  opacity: 1; /* necesario para Chrome */
+}
+
+input::-webkit-input-placeholder {
+  color: var(--hint-text);
+}
+
+input::-moz-placeholder {
+  color: var(--hint-text);
+}
+
+input:-ms-input-placeholder {
+  color: var(--hint-text);
 }
 
 /* =========================
@@ -72,7 +93,7 @@ a {
 }
 
 /* =========================
-   CARDS / BLOQUES (opcional)
+   CARDS / BLOQUES
    ========================= */
 .mvd-card {
   background-color: var(--card-bg);
@@ -82,7 +103,7 @@ a {
 }
 
 /* =========================
-   SCROLLBAR SUAVE (opcional)
+   SCROLLBAR SUAVE
    ========================= */
 ::-webkit-scrollbar {
   width: 10px;
