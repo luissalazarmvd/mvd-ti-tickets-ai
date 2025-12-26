@@ -1,7 +1,9 @@
+// app/api/ai/insight/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type Body = { id_ticket: string };
 
@@ -86,9 +88,8 @@ async function fetchWebSnippets(origin: string, q: string): Promise<WebSnippet[]
 
     const r = await fetch(url.toString(), {
       method: "GET",
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
       signal: controller.signal,
-      // Importante: no cachear en un MVP si no quieres
       cache: "no-store",
     });
 
@@ -244,6 +245,7 @@ ${JSON.stringify(webSnippets, null, 2)}
         Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
+      cache: "no-store",
       body: JSON.stringify({
         model: "gpt-5-mini",
         input: [
@@ -262,8 +264,17 @@ ${JSON.stringify(webSnippets, null, 2)}
 
     if (!resp.ok) {
       const t = await resp.text();
+
+      // Rate limit típico
+      if (resp.status === 429) {
+        return NextResponse.json(
+          { ok: false, error: "OpenAI rate limit (429). Reintenta en ~1s." },
+          { status: 429 }
+        );
+      }
+
       return NextResponse.json(
-        { ok: false, error: `OpenAI error: ${t}` },
+        { ok: false, error: `OpenAI error (${resp.status}): ${t}` },
         { status: 500 }
       );
     }
