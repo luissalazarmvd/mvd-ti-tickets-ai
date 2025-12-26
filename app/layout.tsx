@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MVD – ML Dashboard",
-  description: "Market & ML signals – Veta Dorada",
+  title: "MVD – TI Tickets",
+  description: "Tickets e Insights – Veta Dorada",
 };
 
 export default function RootLayout({
