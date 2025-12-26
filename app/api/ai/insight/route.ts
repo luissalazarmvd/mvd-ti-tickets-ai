@@ -5,6 +5,12 @@ export const runtime = "nodejs";
 
 type Body = { id_ticket: string };
 
+type WebSnippet = {
+  title?: string;
+  url?: string;
+  snippet?: string;
+};
+
 // =========================
 // Helpers
 // =========================
@@ -55,6 +61,51 @@ function compactTicket(t: any) {
   };
 }
 
+function buildWebQuery(cur: any) {
+  const cat = (cur?.category_name ?? "").toString().trim();
+  const title = (cur?.ticket_title ?? "").toString().trim();
+  const detail = (cur?.ticket_detail ?? "").toString().trim();
+
+  // Mantén la query corta para que el search sea relevante.
+  const shortDetail = detail.length > 220 ? detail.slice(0, 220) : detail;
+
+  // Ejemplo: "M365 Outlook no sincroniza error 0x800..." etc.
+  return [cat, title, shortDetail].filter(Boolean).join(" ");
+}
+
+async function fetchWebSnippets(origin: string, q: string): Promise<WebSnippet[]> {
+  if (!q) return [];
+
+  // Timeout corto para no trabar el insight
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const url = new URL("/api/web/search", origin);
+    url.searchParams.set("q", q);
+
+    const r = await fetch(url.toString(), {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+      signal: controller.signal,
+      // Importante: no cachear en un MVP si no quieres
+      cache: "no-store",
+    });
+
+    if (!r.ok) return [];
+
+    const json = await r.json();
+    const data = (json?.data ?? []) as WebSnippet[];
+
+    // Limitar a 3 (si tu endpoint ya limita, igual lo reforzamos)
+    return Array.isArray(data) ? data.slice(0, 3) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // =========================
 // POST
 // =========================
@@ -72,6 +123,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Para llamar a tu propio /api/web/search desde server route:
+    const origin = new URL(req.url).origin;
 
     // =========================
     // 1) Ticket actual
@@ -121,17 +175,26 @@ export async function POST(req: Request) {
     }));
 
     // =========================
+    // 2.5) Web snippets (secundario)
+    // =========================
+    const webQuery = buildWebQuery(cur);
+    const webSnippets = await fetchWebSnippets(origin, webQuery);
+
+    // =========================
     // 3) Prompt
     // =========================
     const system = `
 Eres un analista senior de soporte TI (ITSM).
 Propones una solución accionable basándote en el ticket actual y tickets históricos resueltos.
+También puedes usar DOCUMENTACIÓN WEB (secundaria) si aporta.
 
 Reglas:
 - No inventes accesos ni permisos.
-- Si falta información, indícalo explícitamente.
+- Si falta información, indícalo explícitamente y di cómo pedirla.
 - Prioriza: restaurar servicio, evitar recurrencia, experiencia del usuario.
 - Cita IDs de tickets históricos usados.
+- Si usas DOCUMENTACIÓN WEB, usa SOLO las URLs provistas (no inventes fuentes).
+- Si hay conflicto entre históricos y web, prioriza históricos.
 - Devuelve SOLO JSON válido según el schema.
 `.trim();
 
@@ -141,6 +204,9 @@ ${JSON.stringify(currentTicket, null, 2)}
 
 HISTÓRICOS RELEVANTES:
 ${JSON.stringify(historyTickets, null, 2)}
+
+DOCUMENTACIÓN WEB (secundaria; usar solo si aporta; citar URLs provistas):
+${JSON.stringify(webSnippets, null, 2)}
 `.trim();
 
     const schema = {
@@ -245,7 +311,14 @@ ${JSON.stringify(historyTickets, null, 2)}
       );
     }
 
-    return NextResponse.json({ ok: true, data: parsedJson });
+    return NextResponse.json({
+      ok: true,
+      data: parsedJson,
+      meta: {
+        webQuery,
+        webSnippetsUsed: webSnippets?.length ?? 0,
+      },
+    });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Error" },
