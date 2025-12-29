@@ -51,18 +51,26 @@ export default function Home() {
     return null;
   }, [role]);
 
-  // Mantener sesión
+  // ✅ Mantener sesión (AHORA por cookie httpOnly vía /api/auth/me)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("mvdti_auth_role");
-      if (saved === "ti" || saved === "jefes") {
+    const check = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { method: "GET" });
+        if (!res.ok) return;
+        const js = await res.json();
+        if (!js?.ok) return;
+
+        const r = js?.role;
+        if (r !== "ti" && r !== "jefes") return;
+
         setAuthorized(true);
-        setRole(saved);
-      }
-    } catch {}
+        setRole(r);
+      } catch {}
+    };
+    check();
   }, []);
 
-  // ✅ Login ahora valida en backend: /api/auth/login
+  // ✅ Login ahora valida en backend: /api/auth/login (y backend setea cookie)
   const login = async () => {
     const pass = input.trim();
 
@@ -82,15 +90,16 @@ export default function Home() {
       setAuthorized(true);
       setRole(r);
       setError("");
-      try {
-        localStorage.setItem("mvdti_auth_role", r);
-      } catch {}
     } catch (e: any) {
       setError(e?.message ?? "Error");
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+
     setAuthorized(false);
     setRole(null);
     setInput("");
@@ -99,9 +108,6 @@ export default function Home() {
     setOptions([]);
     setInsight(null);
     setInsightError("");
-    try {
-      localStorage.removeItem("mvdti_auth_role");
-    } catch {}
   };
 
   // Buscar tickets (debounce simple)

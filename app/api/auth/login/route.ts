@@ -17,10 +17,29 @@ export async function POST(req: Request) {
 
     const x = String(pass ?? "").trim();
 
-    if (x === pTI) return NextResponse.json({ ok: true, role: "ti" });
-    if (x === pJ) return NextResponse.json({ ok: true, role: "jefes" });
+    // Determinar rol
+    let role: "ti" | "jefes" | null = null;
+    if (x === pTI) role = "ti";
+    else if (x === pJ) role = "jefes";
 
-    return NextResponse.json({ ok: false, error: "Clave incorrecta." }, { status: 401 });
+    if (!role) {
+      return NextResponse.json({ ok: false, error: "Clave incorrecta." }, { status: 401 });
+    }
+
+    // Respuesta + cookie httpOnly
+    const res = NextResponse.json({ ok: true, role });
+
+    res.cookies.set({
+      name: "mvdti_session",
+      value: role,
+      httpOnly: true,
+      secure: true,      // en Vercel (https) OK
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 8, // 8 horas
+    });
+
+    return res;
   } catch {
     return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
   }
