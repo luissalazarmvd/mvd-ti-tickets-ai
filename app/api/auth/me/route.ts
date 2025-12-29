@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
-export async function GET(req: Request) {
-  const role = req.cookies.get("mvdti_session")?.value;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const role = cookies().get("mvdti_session")?.value;
 
   if (role !== "ti" && role !== "jefes") {
     return NextResponse.json({ ok: false }, { status: 401 });
