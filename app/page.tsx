@@ -2,9 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const PASS_TI = "MVDTI_123";
-const PASS_JEFES = "MVDJeFeS_123";
-
 const PBI_TI =
   "https://app.powerbi.com/view?r=eyJrIjoiZWZiNzE2YzctNDA4Ni00M2UyLWExNzktM2Q4ZTAxMTk2OTdjIiwidCI6IjYzNzhiZmNkLWRjYjktNDMwZi05Nzc4LWRiNTk3NGRjMmFkYyIsImMiOjR9";
 
@@ -65,27 +62,32 @@ export default function Home() {
     } catch {}
   }, []);
 
-  const login = () => {
+  // ✅ Login ahora valida en backend: /api/auth/login
+  const login = async () => {
     const pass = input.trim();
-    if (pass === PASS_TI) {
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pass }),
+      });
+
+      const js = await res.json();
+      if (!js?.ok) throw new Error(js?.error ?? "Clave incorrecta.");
+
+      const r = js?.role;
+      if (r !== "ti" && r !== "jefes") throw new Error("Rol inválido.");
+
       setAuthorized(true);
-      setRole("ti");
+      setRole(r);
       setError("");
       try {
-        localStorage.setItem("mvdti_auth_role", "ti");
+        localStorage.setItem("mvdti_auth_role", r);
       } catch {}
-      return;
+    } catch (e: any) {
+      setError(e?.message ?? "Error");
     }
-    if (pass === PASS_JEFES) {
-      setAuthorized(true);
-      setRole("jefes");
-      setError("");
-      try {
-        localStorage.setItem("mvdti_auth_role", "jefes");
-      } catch {}
-      return;
-    }
-    setError("Clave incorrecta.");
   };
 
   const logout = () => {
@@ -196,14 +198,7 @@ export default function Home() {
       {/* Power BI */}
       {pbiUrl ? (
         <div style={{ width: "100%", height: "72vh", borderRadius: 16, overflow: "hidden", border: "1px solid #2a2a2a" }}>
-          <iframe
-            title="Power BI"
-            src={pbiUrl}
-            width="100%"
-            height="100%"
-            style={{ border: "none" }}
-            allowFullScreen
-          />
+          <iframe title="Power BI" src={pbiUrl} width="100%" height="100%" style={{ border: "none" }} allowFullScreen />
         </div>
       ) : null}
 
@@ -308,7 +303,9 @@ export default function Home() {
               <div style={{ fontWeight: 600, marginBottom: 6 }}>Pasos sugeridos</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {insight.pasos_sugeridos.map((x, i) => (
-                  <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>{x}</li>
+                  <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>
+                    {x}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -318,7 +315,9 @@ export default function Home() {
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>Preguntas para aclarar</div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
                   {insight.preguntas_para_aclarar.map((x, i) => (
-                    <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>{x}</li>
+                    <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>
+                      {x}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -329,7 +328,9 @@ export default function Home() {
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>Riesgos y precauciones</div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
                   {insight.riesgos_y_precauciones.map((x, i) => (
-                    <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>{x}</li>
+                    <li key={i} style={{ marginBottom: 6, opacity: 0.95 }}>
+                      {x}
+                    </li>
                   ))}
                 </ul>
               </div>
