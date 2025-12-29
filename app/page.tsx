@@ -209,7 +209,7 @@ export default function Home() {
 
       {/* Copiloto TI */}
       <div style={{ marginTop: 14, padding: 16, borderRadius: 16, border: "1px solid #2a2a2a" }}>
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Copiloto TI</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Copiloto TI (gpt 5 mini)</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
           <div>
             <input
