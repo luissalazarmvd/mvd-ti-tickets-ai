@@ -68,17 +68,16 @@ function buildWebQuery(cur: any) {
   const title = (cur?.ticket_title ?? "").toString().trim();
   const detail = (cur?.ticket_detail ?? "").toString().trim();
 
-  // Mantén la query corta para que el search sea relevante.
   const shortDetail = detail.length > 220 ? detail.slice(0, 220) : detail;
-
-  // Ejemplo: "M365 Outlook no sincroniza error 0x800..." etc.
   return [cat, title, shortDetail].filter(Boolean).join(" ");
 }
 
-async function fetchWebSnippets(origin: string, q: string): Promise<WebSnippet[]> {
+async function fetchWebSnippets(
+  origin: string,
+  q: string
+): Promise<WebSnippet[]> {
   if (!q) return [];
 
-  // Timeout corto para no trabar el insight
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
 
@@ -97,8 +96,6 @@ async function fetchWebSnippets(origin: string, q: string): Promise<WebSnippet[]
 
     const json = await r.json();
     const data = (json?.data ?? []) as WebSnippet[];
-
-    // Limitar a 3 (si tu endpoint ya limita, igual lo reforzamos)
     return Array.isArray(data) ? data.slice(0, 3) : [];
   } catch {
     return [];
@@ -125,7 +122,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Para llamar a tu propio /api/web/search desde server route:
     const origin = new URL(req.url).origin;
 
     // =========================
@@ -182,7 +178,7 @@ export async function POST(req: Request) {
     const webSnippets = await fetchWebSnippets(origin, webQuery);
 
     // =========================
-    // 3) Prompt
+    // 3) Prompt (más corto y con límite de pasos)
     // =========================
     const system = `
 Eres un analista senior de soporte TI (ITSM).
@@ -196,6 +192,9 @@ Reglas:
 - Cita IDs de tickets históricos usados.
 - Si usas DOCUMENTACIÓN WEB, usa SOLO las URLs provistas (no inventes fuentes).
 - Si hay conflicto entre históricos y web, prioriza históricos.
+- La salida debe ser DIRECTA y CORTA.
+- "pasos_sugeridos": MÁXIMO 5 pasos, ordenados por impacto. Cada paso debe ser accionable (qué hacer + dónde) y no dejar cabos sueltos.
+- Evita texto redundante.
 - Devuelve SOLO JSON válido según el schema.
 `.trim();
 
@@ -216,7 +215,11 @@ ${JSON.stringify(webSnippets, null, 2)}
       properties: {
         resumen: { type: "string" },
         diagnostico_probable: { type: "string" },
-        pasos_sugeridos: { type: "array", items: { type: "string" } },
+        pasos_sugeridos: {
+          type: "array",
+          maxItems: 5,
+          items: { type: "string" },
+        },
         preguntas_para_aclarar: { type: "array", items: { type: "string" } },
         riesgos_y_precauciones: { type: "array", items: { type: "string" } },
         tickets_historicos_usados: {
@@ -265,7 +268,6 @@ ${JSON.stringify(webSnippets, null, 2)}
     if (!resp.ok) {
       const t = await resp.text();
 
-      // Rate limit típico
       if (resp.status === 429) {
         return NextResponse.json(
           { ok: false, error: "OpenAI rate limit (429). Reintenta en ~1s." },
@@ -286,7 +288,6 @@ ${JSON.stringify(webSnippets, null, 2)}
     // =========================
     let parsedJson: any = null;
 
-    // 5.1) Buscar output_json explícito
     for (const block of out?.output ?? []) {
       for (const c of block.content ?? []) {
         if (c.type === "output_json" && c.json) {
@@ -297,7 +298,6 @@ ${JSON.stringify(webSnippets, null, 2)}
       if (parsedJson) break;
     }
 
-    // 5.2) Fallback: parsear output_text
     if (!parsedJson) {
       for (const block of out?.output ?? []) {
         for (const c of block.content ?? []) {
@@ -305,9 +305,7 @@ ${JSON.stringify(webSnippets, null, 2)}
             try {
               parsedJson = JSON.parse(c.text);
               break;
-            } catch {
-              // sigue buscando
-            }
+            } catch {}
           }
         }
         if (parsedJson) break;
