@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const role = cookies().get("mvdti_session")?.value;
+  const cookieStore = await cookies();
+  const role = cookieStore.get("mvdti_session")?.value;
 
   if (role !== "ti" && role !== "jefes") {
     return NextResponse.json({ ok: false }, { status: 401 });
