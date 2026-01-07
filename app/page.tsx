@@ -184,6 +184,15 @@ const sendFeedback = async () => {
   }
 };
 
+// FEEDBACK – reset
+const resetFeedbackForm = () => {
+  setRating(null);
+  setComment("");
+  setFeedbackSent(false);
+  setSendingFeedback(false);
+};
+
+
   if (!authorized) {
     return (
       <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
@@ -387,10 +396,25 @@ const sendFeedback = async () => {
   </div>
 
   {feedbackSent ? (
-    <div style={{ color: "#6bff95", fontSize: 13 }}>
+  <div>
+    <div style={{ color: "#6bff95", fontSize: 13, marginBottom: 8 }}>
       Gracias por tu feedback 🙌
     </div>
-  ) : (
+
+    <button
+      onClick={resetFeedbackForm}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 10,
+        border: "1px solid #333",
+        cursor: "pointer",
+      }}
+    >
+      Ingresar nueva valoración
+    </button>
+  </div>
+) : (
+
     <>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
