@@ -45,6 +45,12 @@ export default function Home() {
   const [insight, setInsight] = useState<Insight | null>(null);
   const [insightError, setInsightError] = useState<string>("");
 
+  // FEEDBACK
+const [rating, setRating] = useState<number | null>(null);
+const [comment, setComment] = useState("");
+const [sendingFeedback, setSendingFeedback] = useState(false);
+const [feedbackSent, setFeedbackSent] = useState(false);
+
   const pbiUrl = useMemo(() => {
     if (role === "ti") return PBI_TI;
     if (role === "jefes") return PBI_JEFES;
@@ -154,6 +160,29 @@ export default function Home() {
       setLoadingInsight(false);
     }
   };
+
+  // FEEDBACK – envío
+const sendFeedback = async () => {
+  if (!rating) return;
+
+  setSendingFeedback(true);
+  try {
+    const res = await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating, comment }),
+    });
+
+    const js = await res.json();
+    if (!js.ok) throw new Error(js.error);
+
+    setFeedbackSent(true);
+  } catch {
+    alert("Error enviando feedback");
+  } finally {
+    setSendingFeedback(false);
+  }
+};
 
   if (!authorized) {
     return (
@@ -350,6 +379,70 @@ export default function Home() {
           </div>
         ) : null}
       </div>
+
+      {/* FEEDBACK */}
+<div style={{ marginTop: 16, padding: 16, borderRadius: 16, border: "1px solid #2a2a2a" }}>
+  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+    Valora el Copiloto TI
+  </div>
+
+  {feedbackSent ? (
+    <div style={{ color: "#6bff95", fontSize: 13 }}>
+      Gracias por tu feedback 🙌
+    </div>
+  ) : (
+    <>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+          <button
+            key={n}
+            onClick={() => setRating(n)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #333",
+              background: rating === n ? "#fff" : "transparent",
+              color: rating === n ? "#000" : "inherit",
+              cursor: "pointer",
+            }}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Comentario opcional..."
+        rows={3}
+        style={{
+          width: "100%",
+          padding: 10,
+          borderRadius: 10,
+          border: "1px solid #333",
+          background: "transparent",
+          color: "inherit",
+        }}
+      />
+
+      <button
+        onClick={sendFeedback}
+        disabled={!rating || sendingFeedback}
+        style={{
+          marginTop: 10,
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "1px solid #333",
+          cursor: "pointer",
+          opacity: !rating || sendingFeedback ? 0.6 : 1,
+        }}
+      >
+        {sendingFeedback ? "Enviando..." : "Enviar feedback"}
+      </button>
+    </>
+  )}
+</div>
     </main>
   );
 }
